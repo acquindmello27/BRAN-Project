@@ -1,0 +1,36 @@
+# XcodeGen spec. Run `xcodegen` in this folder to produce MarathiMass.xcodeproj,
+# then `pod install` and open MarathiMass.xcworkspace.
+name: MarathiMass
+options:
+  bundleIdPrefix: com.example        # change to something unique, e.g. com.yourname
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "15.0"
+  createIntermediateGroups: true
+targets:
+  MarathiMass:
+    type: application
+    platform: iOS
+    sources:
+      - path: MarathiMass
+    info:
+      path: MarathiMass/Info.plist
+      properties:
+        CFBundleDisplayName: भाषांतर
+        CFBundleName: MarathiMass
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
+        NSMicrophoneUsageDescription: The microphone listens to the English Mass so it can be translated into Marathi for you.
+        UIBackgroundModes: [audio]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.marathimass
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.9"
+        ENABLE_BITCODE: false
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: YOURTEAMID   # or pick your team in Xcode > Signing & Capabilities

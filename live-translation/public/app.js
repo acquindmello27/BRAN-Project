@@ -287,13 +287,16 @@
       const rec = new SDK.TranslationRecognizer(cfg, audio);
       recognizer = rec;
 
+      // Every handler ignores events from a recognizer we already discarded
+      // (after Stop or during a reconnect), so its own "stopped" event can't
+      // trigger a second reconnect.
       rec.recognizing = (_s, e) => {
-        if (state !== "listening") return;
+        if (recognizer !== rec || state !== "listening") return;
         showPartial(e.result.translations.get("mr"));
       };
 
       rec.recognized = (_s, e) => {
-        if (state !== "listening" || e.result.reason !== SDK.ResultReason.TranslatedSpeech) return;
+        if (recognizer !== rec || state !== "listening" || e.result.reason !== SDK.ResultReason.TranslatedSpeech) return;
         const mr = e.result.translations.get("mr");
         if (!mr || !mr.trim()) return;
         showFinal(mr);
@@ -303,6 +306,7 @@
       rec.synthesizing = (_s, e) => {
         // builtin engine: audio arrives in one or more chunks, then a
         // zero-length "completed" event.  Accumulate, then decode the whole utterance.
+        if (recognizer !== rec) return;
         const a = e.result.audio;
         if (a && a.byteLength > 0) {
           synthChunks.push(new Uint8Array(a));
@@ -317,6 +321,7 @@
       };
 
       rec.canceled = (_s, e) => {
+        if (recognizer !== rec) return;
         if (e.reason === SDK.CancellationReason.Error) {
           console.error("Canceled:", e.errorCode, e.errorDetails);
           if (state === "listening") handleDrop(e.errorDetails);
@@ -324,7 +329,7 @@
       };
 
       rec.sessionStopped = () => {
-        if (state === "listening") handleDrop("session stopped");
+        if (recognizer === rec && state === "listening") handleDrop("session stopped");
       };
 
       if (settings.engine === "tts") {
