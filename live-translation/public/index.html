@@ -161,14 +161,21 @@
         <option value="2.2rem">Large</option>
       </select>
 
-      <label for="pin">Access PIN (only if your server has one)</label>
+      <label for="azureKey">Azure Speech key (simplest: paste it here, it stays on this phone)</label>
+      <input id="azureKey" type="password" autocomplete="off" autocapitalize="off" placeholder="paste KEY 1 from the Azure portal">
+
+      <label for="azureRegion">Azure region</label>
+      <input id="azureRegion" type="text" autocomplete="off" autocapitalize="off" placeholder="e.g. eastus">
+
+      <label for="pin">Access PIN (only if you use the token server instead of a key)</label>
       <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="leave empty if not set">
 
       <div class="row">
         <button id="closeSettings">Close</button>
         <button id="saveSettings" class="primary">Save</button>
       </div>
-      <p class="note">Settings are saved on this phone. Changes apply the next time you tap Start.</p>
+      <p class="note">Settings are saved on this phone only. Changes apply the next time you tap Start.<br>
+      If a key is entered it is used directly; otherwise the app asks the server it was loaded from for a token.</p>
     </div>
   </div>
 

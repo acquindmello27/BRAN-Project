@@ -29,6 +29,8 @@
     rate: "1.0",
     fontsize: "1.7rem",
     pin: "",
+    azureKey: "",
+    azureRegion: "",
   };
   const settings = loadSettings();
   applyFontSize();
@@ -51,6 +53,8 @@
     $("rate").value = settings.rate;
     $("fontsize").value = settings.fontsize;
     $("pin").value = settings.pin;
+    $("azureKey").value = settings.azureKey;
+    $("azureRegion").value = settings.azureRegion;
     settingsEl.classList.add("open");
   };
   $("closeSettings").onclick = () => settingsEl.classList.remove("open");
@@ -60,6 +64,8 @@
     settings.rate = $("rate").value;
     settings.fontsize = $("fontsize").value;
     settings.pin = $("pin").value.trim();
+    settings.azureKey = $("azureKey").value.trim();
+    settings.azureRegion = $("azureRegion").value.trim().toLowerCase();
     saveSettings();
     applyFontSize();
     settingsEl.classList.remove("open");
@@ -182,14 +188,23 @@
     enqueueBuffer(buffer);
   }
 
-  // ---------- Azure token ----------
-  let tokenInfo = null; // { token, region, refreshInSec }
+  // ---------- Azure credentials ----------
+  // Either a key pasted into Settings (kept in this phone's localStorage; no
+  // server needed, so the page can be hosted anywhere, e.g. GitHub Pages), or a
+  // short-lived token from the companion Node server the page was loaded from.
+  let tokenInfo = null; // { token?, key?, region, refreshInSec }
+  function usingKey() { return !!(settings.azureKey && settings.azureRegion); }
   async function fetchToken() {
-    const res = await fetch("/api/token", {
+    if (usingKey()) {
+      tokenInfo = { key: settings.azureKey, region: settings.azureRegion, refreshInSec: 0 };
+      return tokenInfo;
+    }
+    const res = await fetch("api/token", {
       headers: settings.pin ? { "X-App-Pin": settings.pin } : {},
       cache: "no-store",
     });
     if (res.status === 401) throw new Error("PIN_REQUIRED");
+    if (res.status === 404) throw new Error("KEY_REQUIRED");
     if (!res.ok) throw new Error(`Token error ${res.status}`);
     tokenInfo = await res.json();
     return tokenInfo;
@@ -232,7 +247,9 @@
       await teardown();
       state = "idle";
       bigbtn.disabled = false;
-      if (String(err.message) === "PIN_REQUIRED") {
+      if (String(err.message) === "KEY_REQUIRED") {
+        setStatus("error", "Azure की भरा", "Open ⚙ and paste your Azure key + region");
+      } else if (String(err.message) === "PIN_REQUIRED") {
         setStatus("error", "PIN चुकीचा", "Open ⚙ and enter the access PIN");
       } else if (/NotAllowed|Permission|denied/i.test(String(err))) {
         setStatus("error", "मायक्रोफोन परवानगी नाही", "Microphone permission denied");
@@ -269,7 +286,9 @@
   }
 
   function buildTranslationConfig() {
-    const cfg = SDK.SpeechTranslationConfig.fromAuthorizationToken(tokenInfo.token, tokenInfo.region);
+    const cfg = tokenInfo.key
+      ? SDK.SpeechTranslationConfig.fromSubscription(tokenInfo.key, tokenInfo.region)
+      : SDK.SpeechTranslationConfig.fromAuthorizationToken(tokenInfo.token, tokenInfo.region);
     cfg.speechRecognitionLanguage = "en-US";
     cfg.addTargetLanguage("mr");
     if (settings.engine === "builtin") cfg.voiceName = settings.voice;
@@ -333,7 +352,9 @@
       };
 
       if (settings.engine === "tts") {
-        const scfg = SDK.SpeechConfig.fromAuthorizationToken(tokenInfo.token, tokenInfo.region);
+        const scfg = tokenInfo.key
+          ? SDK.SpeechConfig.fromSubscription(tokenInfo.key, tokenInfo.region)
+          : SDK.SpeechConfig.fromAuthorizationToken(tokenInfo.token, tokenInfo.region);
         scfg.speechSynthesisVoiceName = settings.voice;
         scfg.speechSynthesisOutputFormat = SDK.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm;
         synthesizer = new SDK.SpeechSynthesizer(scfg, null); // null => give us bytes, don't auto-play
@@ -402,13 +423,14 @@
   // Azure tokens expire after 10 min; swap in a fresh one before that.
   function scheduleTokenRefresh() {
     clearTimeout(refreshTimer);
+    if (usingKey()) return; // a key never expires
     const secs = Math.max(60, Math.min(540, (tokenInfo && tokenInfo.refreshInSec) || 480));
     refreshTimer = setTimeout(async () => {
       if (state !== "listening") return;
       try {
         await fetchToken();
-        if (recognizer) recognizer.authorizationToken = tokenInfo.token;
-        if (synthesizer) synthesizer.authorizationToken = tokenInfo.token;
+        if (tokenInfo.token && recognizer) recognizer.authorizationToken = tokenInfo.token;
+        if (tokenInfo.token && synthesizer) synthesizer.authorizationToken = tokenInfo.token;
       } catch (e) {
         console.warn("Token refresh failed", e);
       }
