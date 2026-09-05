@@ -1,0 +1,18 @@
+# Render.com Blueprint: deploys the live-translation app as a free web service.
+# In Render: New -> Blueprint -> pick this repo -> fill in the two secret values.
+services:
+  - type: web
+    name: live-translation-marathi
+    runtime: node
+    plan: free
+    rootDir: live-translation
+    buildCommand: ""
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
+      - key: APP_PIN
+        sync: false
