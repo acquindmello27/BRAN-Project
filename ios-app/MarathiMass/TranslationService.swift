@@ -18,6 +18,7 @@ final class TranslationService: ObservableObject {
     private let settings = AppSettings.shared
     private let player = AudioPlayerQueue()
     private var recognizer: SPXTranslationRecognizer?
+    private var mic: MicrophoneCapture?
     private var credentials: Credentials?
     private var synthChunks = Data()
     private var refreshTask: Task<Void, Never>?
@@ -45,8 +46,15 @@ final class TranslationService: ObservableObject {
         } catch {
             await teardown()
             state = .idle
-            errorMessage = error.localizedDescription
+            errorMessage = Self.shortMessage(error)
         }
+    }
+
+    /// SDK errors carry a multi-page call stack; keep the first line only.
+    private static func shortMessage(_ error: Error) -> String {
+        let text = error.localizedDescription
+        if let r = text.range(of: "[CALL STACK") { return text[..<r.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines) }
+        return text
     }
 
     func stop() async {
@@ -94,7 +102,10 @@ final class TranslationService: ObservableObject {
 
     private func startRecognizer() throws {
         let config = try makeConfig()
-        let audio = SPXAudioConfiguration()   // default microphone
+        // We capture the mic ourselves (works in the Simulator too) and push
+        // PCM into the SDK; see MicrophoneCapture.
+        let capture = try MicrophoneCapture()
+        let audio = try capture.audioConfiguration()
         let rec = try SPXTranslationRecognizer(speechTranslationConfiguration: config, audioConfiguration: audio)
 
         // SDK callbacks arrive on background threads; hop to the main actor.
@@ -142,9 +153,13 @@ final class TranslationService: ObservableObject {
 
         // Publish before starting so early events pass the identity check.
         recognizer = rec
+        mic = capture
         do {
+            try capture.start()
             try rec.startContinuousRecognition()
         } catch {
+            capture.stop()
+            mic = nil
             recognizer = nil
             throw error
         }
@@ -155,6 +170,7 @@ final class TranslationService: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
         player.stop()
         synthChunks.removeAll()
+        mic?.stop(); mic = nil
         if let rec = recognizer {
             recognizer = nil
             // stopContinuousRecognition blocks; keep the UI responsive.
@@ -198,6 +214,7 @@ final class TranslationService: ObservableObject {
             return
         }
         state = .reconnecting
+        mic?.stop(); mic = nil
         if let rec = recognizer {
             recognizer = nil
             await Task.detached { try? rec.stopContinuousRecognition() }.value
@@ -210,7 +227,7 @@ final class TranslationService: ObservableObject {
             try startRecognizer()
             state = .listening
         } catch {
-            await handleDrop(error.localizedDescription)
+            await handleDrop(Self.shortMessage(error))
         }
     }
 

@@ -77,6 +77,11 @@ ios-app/
   them; they only tune silence timeouts.
 * Distribution reality check is above: TestFlight needs the paid developer
   program. The website has no such hurdle.
+* The microphone is captured with AVAudioEngine and pushed into the SDK as
+  16 kHz PCM (`MicrophoneCapture.swift`). The SDK's own microphone input fails
+  in the iOS Simulator with `SPXERR_MIC_ERROR`, so this also lets you test in
+  the Simulator using the Mac's microphone (allow it in macOS System Settings →
+  Privacy & Security → Microphone → Simulator if asked).
 * Audio session is `.playAndRecord` with `.allowBluetoothA2DP`, so AirPods stay
   on the high-quality output profile and the **phone's own mic** does the
   listening. That is what you want in a pew: the phone hears the priest, the
