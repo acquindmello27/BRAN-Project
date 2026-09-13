@@ -98,6 +98,10 @@ ios-app/
   when it works. The small gray line above the button shows audio events,
   utterances played and the current output route; Settings has a "Test sound"
   beep that exercises playback without Azure.
+* Sentence detection defaults to Azure's **Semantic** segmentation, which ends
+  phrases by meaning. Without it, a speaker who never pauses (a reading, a
+  recording) produces one endless gray partial and no audio until they stop.
+  Switchable to pause-based in Settings.
 * Marathi neural voices: `mr-IN-AarohiNeural` (female), `mr-IN-ManoharNeural` (male).
 * Cost is the same as the web app: roughly $2.50 per audio hour on the standard
   tier, 5 free hours per month on F0.

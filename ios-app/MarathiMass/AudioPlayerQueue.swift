@@ -10,6 +10,24 @@ final class AudioPlayerQueue {
     private var nodeFormat: AVAudioFormat?
     private let lock = NSLock()
 
+    init() {
+        // If iOS reconfigures the engine (route change, another engine starting,
+        // an interruption), rebuild the graph on the next utterance instead of
+        // silently playing into a dead node.
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.lock.lock(); self.nodeFormat = nil; self.lock.unlock()
+            print("Audio: engine configuration changed, will rebuild")
+        }
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
+            guard let self,
+                  let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            try? AVAudioSession.sharedInstance().setActive(true)
+            self.lock.lock(); self.nodeFormat = nil; self.lock.unlock()
+        }
+    }
+
     /// Diagnostics shown on screen: how many utterances were played and where.
     private(set) var playedCount = 0
     private(set) var lastError: String?

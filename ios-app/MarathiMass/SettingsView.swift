@@ -30,6 +30,31 @@ struct SettingsView: View {
                     Text("\"Test sound\" plays a short beep through the same path as the Marathi voice. If you can't hear it, the problem is the phone's audio route or volume, not Azure.")
                 }
 
+                Section {
+                    Picker("Sentence detection", selection: $settings.segmentation) {
+                        Text("By meaning (keeps up with continuous speech)").tag("semantic")
+                        Text("By pauses in speech").tag("pause")
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } header: {
+                    Text("Sentence detection")
+                }
+
+                Section {
+                    Picker("Speed", selection: $settings.rate) {
+                        Text("Normal").tag(1.0)
+                        Text("Slightly faster").tag(1.1)
+                        Text("Faster").tag(1.2)
+                        Text("Fastest").tag(1.35)
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("Speaking speed (separate text-to-speech only)")
+                } footer: {
+                    Text("Marathi sentences are longer than the English, so a slightly faster voice keeps the audio from falling behind.")
+                }
+
                 Section("Text size") {
                     Slider(value: $settings.textSize, in: 18...44, step: 2)
                     Text("प्रभू तुमच्याबरोबर असो.").font(.system(size: settings.textSize))

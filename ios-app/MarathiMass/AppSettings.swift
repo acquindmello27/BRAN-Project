@@ -16,6 +16,11 @@ final class AppSettings: ObservableObject {
     /// "builtin": Azure speaks inside the translation stream (lowest latency).
     /// "tts": translation returns text; a separate text-to-speech call speaks it.
     @AppStorage("engine") var engine: String = "tts"
+    /// "semantic": Azure ends phrases by meaning (keeps up with continuous speech).
+    /// "pause": phrases end after ~0.7 s of silence.
+    @AppStorage("segmentation") var segmentation: String = "semantic"
+    /// Speaking rate for the separate TTS engine (1.0 = normal).
+    @AppStorage("rate") var rate: Double = 1.1
 
     static let voices: [(id: String, label: String)] = [
         ("mr-IN-AarohiNeural", "Aarohi (female)"),

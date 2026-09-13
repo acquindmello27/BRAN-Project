@@ -100,8 +100,14 @@ final class TranslationService: ObservableObject {
         if settings.engine == "builtin" {
             config.voiceName = settings.voice   // Azure speaks the Marathi in the same stream
         }
-        // Finalize (and speak) a phrase after 0.7 s of silence instead of the default ~1 s.
-        config.setPropertyTo("700", by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
+        if settings.segmentation == "semantic" {
+            // End phrases by meaning, so continuous speech (a homily read without
+            // pauses) still produces sentences to speak every few seconds.
+            config.setPropertyTo("Semantic", by: SPXPropertyId.speechSegmentationStrategy)
+        } else {
+            // Finalize (and speak) a phrase after 0.7 s of silence instead of the default ~1 s.
+            config.setPropertyTo("700", by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
+        }
         // Don't give up during long silences (hymns, procession, quiet prayer).
         config.setPropertyTo("60000", by: SPXPropertyId.speechServiceConnectionInitialSilenceTimeoutMs)
         return config
@@ -199,7 +205,7 @@ final class TranslationService: ObservableObject {
         guard let synth = synthesizer else { return }
         ttsQueue.async { [weak self] in
             do {
-                let result = try synth.speakText(text)
+                let result = try synth.speakSsml(Self.ssml(text, voice: self?.settings.voice ?? "mr-IN-AarohiNeural", rate: self?.settings.rate ?? 1.0))
                 let data = result.audioData ?? Data()
                 Task { @MainActor in
                     guard let self, self.state == .listening else { return }
@@ -216,6 +222,16 @@ final class TranslationService: ObservableObject {
                 print("TTS error: \(error)")
             }
         }
+    }
+
+    private static func ssml(_ text: String, voice: String, rate: Double) -> String {
+        let escaped = text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+        let r = String(format: "%.2f", max(0.5, min(2.0, rate)))
+        return "<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xml:lang=\"mr-IN\">" +
+            "<voice name=\"\(voice)\"><prosody rate=\"\(r)\">\(escaped)</prosody></voice></speak>"
     }
 
     private func updateDebug() {

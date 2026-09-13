@@ -31,6 +31,7 @@
     pin: "",
     azureKey: "",
     azureRegion: "",
+    segmentation: "semantic",
   };
   const settings = loadSettings();
   applyFontSize();
@@ -55,6 +56,7 @@
     $("pin").value = settings.pin;
     $("azureKey").value = settings.azureKey;
     $("azureRegion").value = settings.azureRegion;
+    $("segmentation").value = settings.segmentation;
     settingsEl.classList.add("open");
   };
   $("closeSettings").onclick = () => settingsEl.classList.remove("open");
@@ -66,6 +68,7 @@
     settings.pin = $("pin").value.trim();
     settings.azureKey = $("azureKey").value.trim();
     settings.azureRegion = $("azureRegion").value.trim().toLowerCase();
+    settings.segmentation = $("segmentation").value;
     saveSettings();
     applyFontSize();
     settingsEl.classList.remove("open");
@@ -304,8 +307,13 @@
     cfg.speechRecognitionLanguage = "en-US";
     cfg.addTargetLanguage("mr");
     if (settings.engine === "builtin") cfg.voiceName = settings.voice;
-    // Shorter silence-based segmentation = phrases are finalized (and spoken) sooner.
-    cfg.setProperty(SDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, "700");
+    if (settings.segmentation === "semantic") {
+      // End phrases by meaning, so continuous speech still yields sentences to speak.
+      cfg.setProperty(SDK.PropertyId.Speech_SegmentationStrategy, "Semantic");
+    } else {
+      // Shorter silence-based segmentation = phrases are finalized (and spoken) sooner.
+      cfg.setProperty(SDK.PropertyId.Speech_SegmentationSilenceTimeoutMs, "700");
+    }
     // Keep the connection alive through long pauses (hymns, silence, procession).
     cfg.setProperty(SDK.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "60000");
     return cfg;
