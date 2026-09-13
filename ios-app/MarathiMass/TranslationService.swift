@@ -25,6 +25,7 @@ final class TranslationService: ObservableObject {
     private var synthEvents = 0
     private var synthBytes = 0
     private var synthesizer: SPXSpeechSynthesizer?
+    private var lastTtsProblem: String?
     private let ttsQueue = DispatchQueue(label: "marathi.tts", qos: .userInitiated)
     private var refreshTask: Task<Void, Never>?
     private var restartAttempts = 0
@@ -172,7 +173,8 @@ final class TranslationService: ObservableObject {
         // Publish before starting so early events pass the identity check.
         recognizer = rec
         mic = capture
-        synthEvents = 0; synthBytes = 0
+        synthEvents = 0; synthBytes = 0; lastTtsProblem = nil
+        player.playedCountExternal = 0
         updateDebug()
         do {
             try capture.start()
@@ -198,28 +200,50 @@ final class TranslationService: ObservableObject {
             scfg = try SPXSpeechConfiguration(authorizationToken: token, region: region)
         }
         scfg.speechSynthesisVoiceName = settings.voice
-        synthesizer = try SPXSpeechSynthesizer(speechConfiguration: scfg, audioConfiguration: nil)
+        if settings.engine == "sdkplayer" {
+            // The SDK plays the audio itself through the default output (the
+            // path Microsoft's iOS quickstart uses).
+            synthesizer = try SPXSpeechSynthesizer(scfg)
+        } else {
+            // nil audio configuration: no SDK playback, we get the WAV bytes.
+            synthesizer = try SPXSpeechSynthesizer(speechConfiguration: scfg, audioConfiguration: nil)
+        }
     }
 
     private func speakWithTts(_ text: String) {
         guard let synth = synthesizer else { return }
         ttsQueue.async { [weak self] in
+            let voice = self?.settings.voice ?? "mr-IN-AarohiNeural"
+            let rate = self?.settings.rate ?? 1.0
+            let sdkPlays = self?.settings.engine == "sdkplayer"
             do {
-                let result = try synth.speakSsml(Self.ssml(text, voice: self?.settings.voice ?? "mr-IN-AarohiNeural", rate: self?.settings.rate ?? 1.0))
+                let result = try synth.speakSsml(Self.ssml(text, voice: voice, rate: rate))
                 let data = result.audioData ?? Data()
+                var problem: String?
+                if result.reason == .canceled {
+                    let details = try? SPXSpeechSynthesisCancellationDetails(fromCanceledSynthesisResult: result)
+                    problem = "TTS canceled: \(details?.errorDetails ?? "no details")"
+                } else if result.reason != .synthesizingAudioCompleted {
+                    problem = "TTS result reason \(result.reason.rawValue)"
+                } else if data.isEmpty && !sdkPlays {
+                    problem = "TTS returned no audio"
+                }
                 Task { @MainActor in
                     guard let self, self.state == .listening else { return }
                     self.synthEvents += 1
                     self.synthBytes += data.count
-                    if result.reason == .synthesizingAudioCompleted, !data.isEmpty {
-                        self.player.enqueue(wav: data)
-                    } else {
-                        print("TTS: reason \(result.reason.rawValue), \(data.count) bytes")
-                    }
+                    self.lastTtsProblem = problem
+                    if problem == nil, !sdkPlays { self.player.enqueue(wav: data) }
+                    if sdkPlays { self.player.playedCountExternal += 1 }
                     self.updateDebug()
                 }
             } catch {
-                print("TTS error: \(error)")
+                let msg = Self.shortMessage(error)
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.lastTtsProblem = "TTS error: \(msg)"
+                    self.updateDebug()
+                }
             }
         }
     }
@@ -235,9 +259,15 @@ final class TranslationService: ObservableObject {
     }
 
     private func updateDebug() {
-        let engine = settings.engine == "builtin" ? "built-in voice" : "separate TTS"
-        var s = "\(engine) · audio events \(synthEvents) (\(synthBytes / 1024) KB) · played \(player.playedCount) · out: \(player.currentRoute)"
+        let engine: String
+        switch settings.engine {
+        case "builtin": engine = "built-in voice"
+        case "sdkplayer": engine = "TTS via SDK player"
+        default: engine = "separate TTS"
+        }
+        var s = "\(engine) · audio events \(synthEvents) (\(synthBytes / 1024) KB) · played \(player.playedCount + player.playedCountExternal) · out: \(player.currentRoute)"
         if let e = player.lastError { s += " · \(e)" }
+        if let t = lastTtsProblem { s += " · \(t)" }
         debugInfo = s
     }
 

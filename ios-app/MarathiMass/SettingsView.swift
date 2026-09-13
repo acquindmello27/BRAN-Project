@@ -18,7 +18,8 @@ struct SettingsView: View {
 
                 Section {
                     Picker("Engine", selection: $settings.engine) {
-                        Text("Separate text-to-speech (reliable)").tag("tts")
+                        Text("Separate text-to-speech").tag("tts")
+                        Text("Text-to-speech via SDK player (fallback)").tag("sdkplayer")
                         Text("Built-in voice stream (lower latency)").tag("builtin")
                     }
                     .pickerStyle(.inline)

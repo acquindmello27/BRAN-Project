@@ -30,6 +30,7 @@ final class AudioPlayerQueue {
 
     /// Diagnostics shown on screen: how many utterances were played and where.
     private(set) var playedCount = 0
+    var playedCountExternal = 0   // utterances the SDK played itself
     private(set) var lastError: String?
     var currentRoute: String {
         AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portName }.joined(separator: ",")
