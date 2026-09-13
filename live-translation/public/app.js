@@ -178,13 +178,25 @@
     return buf;
   }
 
+  // Headerless 16 kHz 16-bit mono PCM (the translation service may omit the RIFF header).
+  function decodeRawPcm16(ab, sampleRate) {
+    const frames = Math.floor(ab.byteLength / 2);
+    if (frames <= 0) return null;
+    const dv = new DataView(ab);
+    const buf = audioCtx.createBuffer(1, frames, sampleRate);
+    const out = buf.getChannelData(0);
+    for (let i = 0; i < frames; i++) out[i] = dv.getInt16(i * 2, true) / 32768;
+    return buf;
+  }
+
   async function playArrayBuffer(ab) {
     if (!ab || ab.byteLength === 0 || !audioCtx) return;
     let buffer = decodeWav(ab);
     if (!buffer) {
       try { buffer = await audioCtx.decodeAudioData(ab.slice(0)); }
-      catch (e) { console.warn("Could not decode audio", e); return; }
+      catch { buffer = decodeRawPcm16(ab, 16000); }
     }
+    if (!buffer) { console.warn("Could not decode audio", ab.byteLength); return; }
     enqueueBuffer(buffer);
   }
 

@@ -15,18 +15,24 @@ final class AudioPlayerQueue {
     /// the phone's own microphone does the listening.
     func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP])
+        // .defaultToSpeaker: with no earphones connected, play through the loud
+        // speaker instead of the tiny earpiece. Earphones/AirPods still win when present.
+        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker])
         try session.setActive(true, options: [])
     }
 
     func enqueue(wav data: Data) {
-        guard let pcm = WAVDecoder.decode(data) else { return }
+        guard let pcm = WAVDecoder.decode(data) else {
+            print("Audio: could not decode \(data.count) bytes (first bytes: \(data.prefix(8).map { String(format: "%02x", $0) }.joined(separator: " ")))")
+            return
+        }
         lock.lock(); defer { lock.unlock() }
         do {
             try ensureEngine(for: pcm.format)
             let buffer = try convertIfNeeded(pcm)
             player.scheduleBuffer(buffer, completionHandler: nil)
             if !player.isPlaying { player.play() }
+            print("Audio: playing \(pcm.frameLength) frames @ \(Int(pcm.format.sampleRate)) Hz, route: \(AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portName }.joined(separator: ","))")
         } catch {
             print("Audio playback error: \(error)")
         }
@@ -75,7 +81,9 @@ final class AudioPlayerQueue {
     }
 }
 
-/// Minimal RIFF/WAVE parser for 8/16-bit integer or 32-bit float PCM.
+/// Minimal RIFF/WAVE parser for 8/16-bit integer or 32-bit float PCM, with a
+/// fallback for headerless 16 kHz 16-bit mono PCM (what the translation
+/// service sends when it omits the RIFF header).
 enum WAVDecoder {
     static func decode(_ data: Data) -> AVAudioPCMBuffer? {
         guard data.count > 44 else { return nil }
@@ -83,7 +91,7 @@ enum WAVDecoder {
         func tag(_ o: Int) -> String { String(bytes: bytes[o..<o + 4], encoding: .ascii) ?? "" }
         func u16(_ o: Int) -> Int { Int(bytes[o]) | Int(bytes[o + 1]) << 8 }
         func u32(_ o: Int) -> Int { u16(o) | u16(o + 2) << 16 }
-        guard tag(0) == "RIFF", tag(8) == "WAVE" else { return nil }
+        guard tag(0) == "RIFF", tag(8) == "WAVE" else { return decodeRawPCM16(bytes, sampleRate: 16_000) }
 
         var off = 12
         var audioFormat = 0, channels = 0, sampleRate = 0, bits = 0
@@ -132,6 +140,23 @@ enum WAVDecoder {
                     }
                     out[ch][i] = v
                 }
+            }
+        }
+        return buffer
+    }
+
+    /// Headerless little-endian Int16 mono PCM.
+    private static func decodeRawPCM16(_ bytes: [UInt8], sampleRate: Double) -> AVAudioPCMBuffer? {
+        let frames = bytes.count / 2
+        guard frames > 0,
+              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+              let out = buffer.floatChannelData else { return nil }
+        buffer.frameLength = AVAudioFrameCount(frames)
+        bytes.withUnsafeBufferPointer { raw in
+            let base = raw.baseAddress!
+            for i in 0..<frames {
+                out[0][i] = Float(UnsafeRawPointer(base + i * 2).loadUnaligned(as: Int16.self)) / 32768
             }
         }
         return buffer

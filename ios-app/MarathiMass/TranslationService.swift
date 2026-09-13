@@ -131,6 +131,7 @@ final class TranslationService: ObservableObject {
             // "completed" event with no audio. Accumulate, then play the whole thing.
             let chunk = evt.result.audio
             let done = evt.result.reason == .synthesizingAudioCompleted || (chunk?.isEmpty ?? true)
+            print("Audio: synthesis event, \(chunk?.count ?? 0) bytes, reason \(evt.result.reason.rawValue), done=\(done)")
             Task { @MainActor in
                 guard let self, self.recognizer === rec else { return }
                 self.handleAudio(chunk: chunk, done: done)
