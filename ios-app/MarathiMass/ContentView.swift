@@ -15,6 +15,10 @@ struct ContentView: View {
                 header
                 statusLine
                 transcript
+                if !service.debugInfo.isEmpty {
+                    Text(service.debugInfo).font(.caption2).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 bigButton
             }
             .padding(.horizontal, 16)

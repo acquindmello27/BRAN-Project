@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
+    @EnvironmentObject private var service: TranslationService
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -13,6 +14,20 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                }
+
+                Section {
+                    Picker("Engine", selection: $settings.engine) {
+                        Text("Separate text-to-speech (reliable)").tag("tts")
+                        Text("Built-in voice stream (lower latency)").tag("builtin")
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    Button("Test sound") { service.playTestTone() }
+                } header: {
+                    Text("Voice engine")
+                } footer: {
+                    Text("\"Test sound\" plays a short beep through the same path as the Marathi voice. If you can't hear it, the problem is the phone's audio route or volume, not Azure.")
                 }
 
                 Section("Text size") {

@@ -14,6 +14,7 @@ final class TranslationService: ObservableObject {
     @Published private(set) var lines: [String] = []     // finalized Marathi sentences
     @Published private(set) var partial: String = ""     // in-progress translation
     @Published var errorMessage: String?
+    @Published private(set) var debugInfo: String = ""     // small diagnostic line in the UI
 
     private let settings = AppSettings.shared
     private let player = AudioPlayerQueue()
@@ -21,6 +22,10 @@ final class TranslationService: ObservableObject {
     private var mic: MicrophoneCapture?
     private var credentials: Credentials?
     private var synthChunks = Data()
+    private var synthEvents = 0
+    private var synthBytes = 0
+    private var synthesizer: SPXSpeechSynthesizer?
+    private let ttsQueue = DispatchQueue(label: "marathi.tts", qos: .userInitiated)
     private var refreshTask: Task<Void, Never>?
     private var restartAttempts = 0
     private var stopping = false
@@ -92,7 +97,9 @@ final class TranslationService: ObservableObject {
         }
         config.speechRecognitionLanguage = "en-US"
         config.addTargetLanguage("mr")
-        config.voiceName = settings.voice   // Azure speaks the Marathi in the same stream
+        if settings.engine == "builtin" {
+            config.voiceName = settings.voice   // Azure speaks the Marathi in the same stream
+        }
         // Finalize (and speak) a phrase after 0.7 s of silence instead of the default ~1 s.
         config.setPropertyTo("700", by: SPXPropertyId.speechSegmentationSilenceTimeoutMs)
         // Don't give up during long silences (hymns, procession, quiet prayer).
@@ -152,9 +159,15 @@ final class TranslationService: ObservableObject {
             }
         }
 
+        if settings.engine != "builtin" {
+            try makeSynthesizer()
+        }
+
         // Publish before starting so early events pass the identity check.
         recognizer = rec
         mic = capture
+        synthEvents = 0; synthBytes = 0
+        updateDebug()
         do {
             try capture.start()
             try rec.startContinuousRecognition()
@@ -166,12 +179,64 @@ final class TranslationService: ObservableObject {
         }
     }
 
+    /// Separate text-to-speech engine: a synthesizer with no audio output of its
+    /// own (nil audio configuration) so it hands us the WAV bytes and our queue
+    /// plays them in order.
+    private func makeSynthesizer() throws {
+        guard let creds = credentials else { throw CredentialError.notConfigured }
+        let scfg: SPXSpeechConfiguration
+        switch creds {
+        case .key(let key, let region):
+            scfg = try SPXSpeechConfiguration(subscription: key, region: region)
+        case .token(let token, let region, _):
+            scfg = try SPXSpeechConfiguration(authorizationToken: token, region: region)
+        }
+        scfg.speechSynthesisVoiceName = settings.voice
+        synthesizer = try SPXSpeechSynthesizer(speechConfiguration: scfg, audioConfiguration: nil)
+    }
+
+    private func speakWithTts(_ text: String) {
+        guard let synth = synthesizer else { return }
+        ttsQueue.async { [weak self] in
+            do {
+                let result = try synth.speakText(text)
+                let data = result.audioData ?? Data()
+                Task { @MainActor in
+                    guard let self, self.state == .listening else { return }
+                    self.synthEvents += 1
+                    self.synthBytes += data.count
+                    if result.reason == .synthesizingAudioCompleted, !data.isEmpty {
+                        self.player.enqueue(wav: data)
+                    } else {
+                        print("TTS: reason \(result.reason.rawValue), \(data.count) bytes")
+                    }
+                    self.updateDebug()
+                }
+            } catch {
+                print("TTS error: \(error)")
+            }
+        }
+    }
+
+    private func updateDebug() {
+        let engine = settings.engine == "builtin" ? "built-in voice" : "separate TTS"
+        var s = "\(engine) · audio events \(synthEvents) (\(synthBytes / 1024) KB) · played \(player.playedCount) · out: \(player.currentRoute)"
+        if let e = player.lastError { s += " · \(e)" }
+        debugInfo = s
+    }
+
+    func playTestTone() {
+        player.playTestTone()
+        updateDebug()
+    }
+
     private func teardown() async {
         refreshTask?.cancel(); refreshTask = nil
         UIApplication.shared.isIdleTimerDisabled = false
         player.stop()
         synthChunks.removeAll()
         mic?.stop(); mic = nil
+        synthesizer = nil
         if let rec = recognizer {
             recognizer = nil
             // stopContinuousRecognition blocks; keep the UI responsive.
@@ -193,15 +258,18 @@ final class TranslationService: ObservableObject {
         guard !trimmed.isEmpty else { return }
         lines.append(trimmed)
         if lines.count > maxLines { lines.removeFirst(lines.count - maxLines) }
+        if settings.engine != "builtin" { speakWithTts(trimmed) }
     }
 
     private func handleAudio(chunk: Data?, done: Bool) {
-        if let c = chunk, !c.isEmpty { synthChunks.append(c) }
+        if let c = chunk, !c.isEmpty { synthChunks.append(c); synthBytes += c.count }
+        synthEvents += 1
         if done, !synthChunks.isEmpty {
             let wav = synthChunks
             synthChunks = Data()
             if state == .listening { player.enqueue(wav: wav) }
         }
+        updateDebug()
     }
 
     /// Network blip or expired token mid-Mass: reconnect quietly, up to 5 times.
@@ -216,6 +284,7 @@ final class TranslationService: ObservableObject {
         }
         state = .reconnecting
         mic?.stop(); mic = nil
+        synthesizer = nil
         if let rec = recognizer {
             recognizer = nil
             await Task.detached { try? rec.stopContinuousRecognition() }.value

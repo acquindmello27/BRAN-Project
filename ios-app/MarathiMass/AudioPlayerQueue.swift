@@ -10,6 +10,30 @@ final class AudioPlayerQueue {
     private var nodeFormat: AVAudioFormat?
     private let lock = NSLock()
 
+    /// Diagnostics shown on screen: how many utterances were played and where.
+    private(set) var playedCount = 0
+    private(set) var lastError: String?
+    var currentRoute: String {
+        AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portName }.joined(separator: ",")
+    }
+
+    /// Plays a short beep through the same path as the Marathi audio, so the
+    /// playback chain can be checked without Azure.
+    func playTestTone() {
+        try? configureSession()
+        let rate = 16_000.0, seconds = 0.6
+        let frames = Int(rate * seconds)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames)),
+              let out = buf.floatChannelData else { return }
+        buf.frameLength = AVAudioFrameCount(frames)
+        for i in 0..<frames {
+            let env = min(1, Double(min(i, frames - i)) / 800) // soft edges
+            out[0][i] = Float(0.4 * env * sin(2 * .pi * 440 * Double(i) / rate))
+        }
+        schedule(buf)
+    }
+
     /// Configure the shared audio session for "record from mic, play to earphones".
     /// `.allowBluetoothA2DP` keeps AirPods on the high-quality output profile while
     /// the phone's own microphone does the listening.
@@ -23,17 +47,25 @@ final class AudioPlayerQueue {
 
     func enqueue(wav data: Data) {
         guard let pcm = WAVDecoder.decode(data) else {
+            lastError = "could not decode \(data.count) bytes"
             print("Audio: could not decode \(data.count) bytes (first bytes: \(data.prefix(8).map { String(format: "%02x", $0) }.joined(separator: " ")))")
             return
         }
+        schedule(pcm)
+    }
+
+    private func schedule(_ pcm: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
         do {
             try ensureEngine(for: pcm.format)
             let buffer = try convertIfNeeded(pcm)
             player.scheduleBuffer(buffer, completionHandler: nil)
             if !player.isPlaying { player.play() }
-            print("Audio: playing \(pcm.frameLength) frames @ \(Int(pcm.format.sampleRate)) Hz, route: \(AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portName }.joined(separator: ","))")
+            playedCount += 1
+            lastError = nil
+            print("Audio: playing \(pcm.frameLength) frames @ \(Int(pcm.format.sampleRate)) Hz, route: \(currentRoute)")
         } catch {
+            lastError = error.localizedDescription
             print("Audio playback error: \(error)")
         }
     }

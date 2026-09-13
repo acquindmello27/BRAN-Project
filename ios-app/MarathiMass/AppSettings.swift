@@ -13,6 +13,9 @@ final class AppSettings: ObservableObject {
     @AppStorage("serverPIN") var serverPIN: String = ""
     @AppStorage("voice") var voice: String = "mr-IN-AarohiNeural"
     @AppStorage("textSize") var textSize: Double = 28
+    /// "builtin": Azure speaks inside the translation stream (lowest latency).
+    /// "tts": translation returns text; a separate text-to-speech call speaks it.
+    @AppStorage("engine") var engine: String = "tts"
 
     static let voices: [(id: String, label: String)] = [
         ("mr-IN-AarohiNeural", "Aarohi (female)"),

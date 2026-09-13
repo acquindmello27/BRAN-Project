@@ -90,6 +90,14 @@ ios-app/
   on the high-quality output profile and the **phone's own mic** does the
   listening. That is what you want in a pew: the phone hears the priest, the
   earbuds only play.
+* Two voice engines (Settings → Voice engine). **Separate text-to-speech** is
+  the default: translation returns text and `SPXSpeechSynthesizer` (created with
+  a `nil` audio configuration so it returns WAV bytes) speaks each sentence
+  through the app's own playback queue. **Built-in voice stream** asks the
+  translation service to synthesize inside the same connection; lower latency
+  when it works. The small gray line above the button shows audio events,
+  utterances played and the current output route; Settings has a "Test sound"
+  beep that exercises playback without Azure.
 * Marathi neural voices: `mr-IN-AarohiNeural` (female), `mr-IN-ManoharNeural` (male).
 * Cost is the same as the web app: roughly $2.50 per audio hour on the standard
   tier, 5 free hours per month on F0.
