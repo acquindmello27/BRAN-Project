@@ -37,6 +37,10 @@ pod install         # pulls MicrosoftCognitiveServicesSpeech-iOS 1.51.x
 open MarathiMass.xcworkspace
 ```
 
+**After every `git pull` that adds or removes a Swift file**, re-run the same
+two commands (`xcodegen`, then `pod install`) and reopen the workspace;
+otherwise Xcode reports "Cannot find type … in scope".
+
 In Xcode:
 1. Select the `MarathiMass` target → **Signing & Capabilities** → pick your Team.
    Change the bundle identifier (`com.example.marathimass`) to something unique.
